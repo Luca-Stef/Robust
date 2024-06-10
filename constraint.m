@@ -1,10 +1,12 @@
-function [c, ceq, gradc, gradceq] = constraint(M0, Mf, positionsZ, time_grid, f, numK, noncom, grad)
+function [c, ceq, gradc, gradceq] = constraint(M0, Mf, positionsZ, bin_num, f, numK, noncom, grad)
 
 threshold = 1e-3; %0
 ceq = [];
 gradceq = [];
 gradc = [];
-bin_num=length(time_grid)-1;
+T=f(end);
+f=f(1:end-1);
+time_grid = linspace(0,T,bin_num+1);
 dt = time_grid(2) - time_grid(1);
 n = length(positionsZ);
 const_num=length(M0);
@@ -111,7 +113,7 @@ end
 
 % Full gradient
 gradc = zeros(bin_num,ctrl_num);    
-for q = 1:bin_num
+parfor q = 1:bin_num
     for p = 1:ctrl_num
         for j = 1:n-1 % n-2
             for group = 1:size(noncom,1)
@@ -131,6 +133,7 @@ for q = 1:bin_num
 end
     
 gradc = gradc(:);
+gradc = [gradc; 0];
 
 end
 end

@@ -96,7 +96,7 @@ lb=-fmax*ones(length(x0),1);
 ub=fmax*ones(length(x0),1);
 fun = @(f) infid_grape_lanczos_T_robust(J,Kxx,Mf,c0,ctg,bin_num,f,numK);
 noncom = load(sprintf("noncom%d.mat", n)); noncom = noncom.Expression1; % list of operators that don't commute with initial condition
-nonlcon = @(f) constraint_T(M0, Mf, positionsZ, bin_num, f, numK, noncom, grad);
+nonlcon = @(f) constraint(M0, Mf, positionsZ, bin_num, f, numK, noncom, grad);
 options = optimoptions('fmincon','SpecifyObjectiveGradient',true,'SpecifyConstraintGradient',grad,'Display','iter');
 options.MaxIterations = 500;
 options.MaxFunctionEvaluations=500;
