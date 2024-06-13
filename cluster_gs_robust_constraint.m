@@ -17,7 +17,7 @@ gen_num=2*n^2+3*n+1;%dimension of the operator space
 qubit_num=n; %qubit number
 J=ones(1,n-1); %interaction strengh, m by (n-1) array, n: number of qubits, m: number of sampling points in the hypercube
 T0=n*pi/2; % initial guess for the duration
-bin_num=10*n; % number of time bins in the control pulse
+bin_num=7*n; % number of time bins in the control pulse
 Ntry=4;%number of initial guesses
 fprintf('qubit number:%d\n',n);
 %load structure constants 
@@ -95,7 +95,9 @@ x0=[f0;T0];
 lb=-fmax*ones(length(x0),1);
 ub=fmax*ones(length(x0),1);
 fun = @(f) infid_grape_lanczos_T_robust(J,Kxx,Mf,c0,ctg,bin_num,f,numK);
-noncom = load(sprintf("noncom%d.mat", n)); noncom = noncom.Expression1; % list of operators that don't commute with initial condition
+noncom = load(sprintf("noncom%d.mat", n)); % list of operators that don't commute with initial condition
+fields = fieldnames(noncom);
+noncom = noncom.(fields{1});
 nonlcon = @(f) constraint(M0, Mf, positionsZ, bin_num, f, numK, noncom, grad);
 options = optimoptions('fmincon','SpecifyObjectiveGradient',true,'SpecifyConstraintGradient',grad,'Display','iter');
 options.MaxIterations = 500;
