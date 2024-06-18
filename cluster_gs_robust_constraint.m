@@ -1,5 +1,6 @@
 function cluster_gs_robust_constraint(dg, start, step, stop, grad)
 addpath('functions/');
+addpath('tensor_toolbox');
 maxfun=10^4; %maximum number of function evaluations in the optimisation defualt 4
 nw=4;%number of workers
 iF_target=10^(-3); %target infidelity, optimisation halted if infidelity drops below this default -5
