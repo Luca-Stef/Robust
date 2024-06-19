@@ -1,6 +1,5 @@
 function cluster_gs_robust_constraint(dg, start, step, stop, grad)
 addpath('functions/');
-addpath('tensor_toolbox');
 maxfun=10^4; %maximum number of function evaluations in the optimisation defualt 4
 nw=4;%number of workers
 iF_target=10^(-3); %target infidelity, optimisation halted if infidelity drops below this default -5
@@ -99,10 +98,12 @@ fun = @(f) infid_grape_lanczos_T_robust(J,Kxx,Mf,c0,ctg,bin_num,f,numK);
 noncom = load(sprintf("noncom%d.mat", n)); % list of operators that don't commute with initial condition
 fields = fieldnames(noncom);
 noncom = noncom.(fields{1});
+[a,M,noncom2] = init(noncom, bin_num, gen_num, n, positionsZ); aa = squeeze(a(1,:,:));
 nonlcon = @(f) constraint(M0, Mf, positionsZ, bin_num, f, numK, noncom, grad);
+nonlcon2 = @(f) constraint2(M0, Mf, positionsZ, bin_num, f, numK, a, aa, M, noncom2, "none");
 options = optimoptions('fmincon','SpecifyObjectiveGradient',true,'SpecifyConstraintGradient',grad,'Display','iter');
-options.MaxIterations = 500;
-options.MaxFunctionEvaluations=500;
+options.MaxIterations = 20;
+options.MaxFunctionEvaluations=20;
 options.ObjectiveLimit=iF_target;
 
 startpath = '';

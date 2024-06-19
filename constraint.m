@@ -1,6 +1,7 @@
-function [c, ceq, gradc, gradceq] = constraint(M0, Mf, positionsZ, bin_num, f, numK, noncom, grad)
+function [c, ceq, gradc, gradceq] = constraint2(M0, Mf, positionsZ, bin_num, f, numK, a, aa, M, noncom, grad)
 
-threshold = 1e-2;
+n = length(positionsZ);
+threshold = 0.0025*n;
 ceq = [];
 gradceq = [];
 gradc = [];
@@ -8,31 +9,15 @@ T=f(end);
 f=f(1:end-1);
 time_grid = linspace(0,T,bin_num+1);
 dt = time_grid(2) - time_grid(1);
-n = length(positionsZ);
 const_num=length(M0);
 ctrl_num = n+1;
 gen_num = 2*n^2+3*n+1;
 f = reshape(f(1:end), [bin_num, ctrl_num]);
-a = zeros(bin_num+1, n, gen_num); % initial coefficient vectors of perturbations. size: [bin_num, # of qubits, algebra dimension]
-for j = 1:n
-    a(:,j,positionsZ(j)) = ones(size(a,1),1);
-end
 
-% Auxiliary matrix
-rows = [];
-sizes = cellfun(@(x) size(x, 1), noncom);
-noncom2 = [];
-for i = 1:size(noncom,1)
-    rows = [rows; i*ones(sizes(i),1)];
-    noncom2 = [noncom2; noncom{i}];
-end
-M = sptensor(sparse(rows, 1:sum(sizes), ones(sum(sizes),1)));
-
-if grad == false
+if grad == "none"
 % Construct propagator, propagate initial coeff vector
 eM_tot = 1;
-phases = diag(exp(1j*noncom2(:, 3)));
-s = (dt*squeeze(a(1, 1:end-1, noncom2(:, 1))) * phases) .* squeeze(a(1, 2:end, noncom2(:, 2)));
+s = dt*aa(1:end-1, noncom(:, 1)) .* aa(2:end, noncom(:, 2));
 for q = 1:bin_num
     M_tot = sparse(0);
     for p=1:const_num
@@ -42,15 +27,15 @@ for q = 1:bin_num
         M_tot = M_tot + Mf(p).op*Mf(p).ft(time_grid(q)+dt/2)*f(q,p);
     end
     eM_tot = eM_tot * expm(1j*dt*M_tot);
-    a(q+1,:,:) = tensorprod(squeeze(a(q+1,:,:)), eM_tot, 2, 2);
-    ajk = squeeze(a(q+1, 1:end-1, noncom2(:, 1)));
-    ajpl = squeeze(a(q+1, 2:end, noncom2(:, 2)));
-    s = s + (dt*ajk * phases) .* ajpl;
+    at = tensorprod(aa, eM_tot, 2, 2);
+    ajk = squeeze(at(1:end-1, noncom(:, 1)));
+    ajpl = squeeze(at(2:end, noncom(:, 2)));
+    s = s + dt*ajk .* ajpl;
 end
-s = ttt(M, sptensor(s), 2, 2);
+s = tensorprod(double(M), s, 2, 2);
 c = sum(double(s).*conj(double(s)), 'all') - threshold;
 
-else
+elseif grad == "exact"
 % Compute and propagate derivatives
 % da derivative of coefficient vector of perturbation j wrt to
 % driving of control p in time bin q
@@ -80,26 +65,73 @@ for q = bin_num:-1:1
 end
 
 % Compute cost
-ajk = a(:, 1:end-1, noncom2(:, 1));
-ajpl = a(:, 2:end, noncom2(:, 2));
-phases = diag(exp(1j*noncom2(:, 3)));
-s = sum(tensorprod(dt*ajk, phases, 3, 1) .* ajpl, 1);
-s = ttt(M, sptensor(s), 2, 3);
+ajk = a(:, 1:end-1, noncom(:, 1));
+ajpl = a(:, 2:end, noncom(:, 2));
+s = sum(dt*ajk .* ajpl, 1);
+s = tensorprod(double(M), s, 2, 3);
 c = sum(double(s).*conj(double(s)), 'all') - threshold;
 
 % Full gradient
-phases = diag(exp(1j*noncom2(:,3)));
-ajk = a(:,1:end-1,noncom2(:,1));
-ajpl = a(:,2:end,noncom2(:,2));
-dajpl = da(:,:,:,2:end,noncom2(:,2));
-dajk = da(:,:,:,1:end-1,noncom2(:,1));
-s1 = sum(tensorprod(dt*conj(ajk), conj(phases),3,1) .* conj(ajpl), 1);
-s1 = squeeze(ttt(sptensor(s1), M, 3, 2));
-s2 = sum(permute(repmat(tensorprod(dt*ajk, phases,3,1),1,1,1,size(da,2),size(da,3)),[1,4,5,2,3]) .* dajpl + tensorprod(dt*dajk, phases, 5, 1) .* permute(repmat(ajpl,1,1,1,size(da,2),size(da,3)),[1,4,5,2,3]), 1);
+ajk = a(:,1:end-1,noncom(:,1));
+ajpl = a(:,2:end,noncom(:,2));
+dajpl = da(:,:,:,2:end,noncom(:,2));
+dajk = da(:,:,:,1:end-1,noncom(:,1));
+s1 = sum(dt*conj(ajk) .* conj(ajpl), 1);
+s1 = squeeze(tensorprod(s1, conj(double(M)), 3, 2));
+s2 = sum(permute(repmat(dt*ajk,1,1,1,size(da,2),size(da,3)),[1,4,5,2,3]) .* dajpl + dt*dajk .* permute(repmat(ajpl,1,1,1,size(da,2),size(da,3)),[1,4,5,2,3]), 1);
 s2 = squeeze(ttt(sptensor(s2), M, 5, 2));
 s1 = permute(repmat(double(s1), 1, 1, size(s2,1), size(s2,2)),[3,4,1,2]);
 gradc = 2*sum(real(double(s1 .* s2)), [3,4]);
 gradc = [gradc(:); 0];
+
+elseif grad == "finite"
+% Construct propagator, propagate initial coeff vector
+eM_tot = 1;
+s = dt*squeeze(aa(1:end-1, noncom(:, 1))) .* squeeze(aa(2:end, noncom(:, 2)));
+for q = 1:bin_num
+    M_tot = sparse(0);
+    for p=1:const_num
+        M_tot = M_tot + M0(p).op*M0(p).ft(time_grid(q)+dt/2);
+    end
+    for p=1:ctrl_num
+        M_tot = M_tot + Mf(p).op*Mf(p).ft(time_grid(q)+dt/2)*f(q,p);
+    end
+    eM_tot = eM_tot * expm(1j*dt*M_tot);
+    at = tensorprod(aa, eM_tot, 2, 2);
+    ajk = squeeze(at(1:end-1, noncom(:, 1)));
+    ajpl = squeeze(at(2:end, noncom(:, 2)));
+    s = s + dt*ajk .* ajpl;
+end
+s = tensorprod(double(M), s, 2, 2);
+c = sum(double(s).*conj(double(s)), 'all') - threshold;
+
+dx = 1e-10;
+gradc = zeros(bin_num,ctrl_num);
+for qq = 1:bin_num
+    for pp = 1:ctrl_num
+        ff = f; ff(qq,pp) = f(qq,pp) + dx;
+        eM_tot = 1;
+        sf = dt*squeeze(a(1:end-1, noncom(:, 1))) .* squeeze(a(2:end, noncom(:, 2)));
+        for q = 1:bin_num
+            M_tot = sparse(0);
+            for p=1:const_num
+                M_tot = M_tot + M0(p).op*M0(p).ft(time_grid(q)+dt/2);
+            end
+            for p=1:ctrl_num
+                M_tot = M_tot + Mf(p).op*Mf(p).ft(time_grid(q)+dt/2)*ff(q,p);
+            end
+            eM_tot = eM_tot * expm(1j*dt*M_tot);
+            at = tensorprod(a, eM_tot, 2, 2);
+            ajk = squeeze(at(1:end-1, noncom(:, 1)));
+            ajpl = squeeze(at(2:end, noncom(:, 2)));
+            sf = sf + dt*ajk .* ajpl;
+        end
+        sf = tensorprod(double(M), sf, 2, 2);
+        cf = sum(double(sf).*conj(double(sf)), 'all') - threshold;
+        gradc(qq,pp) = (cf - c)/dx;
+    end
+end
+gradc = [gradc(:);0];
 
 end
 end
